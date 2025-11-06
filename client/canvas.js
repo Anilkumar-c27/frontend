@@ -1,40 +1,37 @@
-import { nanoid } from './nanoid.js'; // tiny inline nanoid below
-
 export function initCanvas(canvas) {
   const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-  const off = document.createElement('canvas'); // redraw surface
+  const off = document.createElement('canvas'); // offscreen for redraw
   const offCtx = off.getContext('2d', { alpha: false });
 
+  // Device pixel ratio for sharper drawing
   let dpi = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+
   let me = { userId: 'local', name: 'Me', color: '#222' };
 
-  // Tool state
+  // Drawing state
   let tool = 'brush';
   let color = '#222222';
   let width = 4;
-
-  // Operation log & index (id -> op)
-  let ops = [];
-  const index = new Map();
-
-  // Input state
   let drawing = false;
   let currentPoints = [];
   let lastSentAt = 0;
 
-  // Remote cursors
-  const cursorLayer = new Map(); // userId -> HTMLElement
+  // Operations
+  let ops = [];
+  const index = new Map();
 
-  // Hooks
+  // Remote cursors
+  const cursorLayer = new Map();
+
+  // Callbacks
   let strokeBatchCb = () => {};
   let cursorCb = () => {};
 
-  function setUser(you) { me = you; }
-
+  // ----------- Canvas Setup -----------
   function resize() {
-    const { clientWidth, clientHeight } = canvas;
-    const w = Math.max(1, clientWidth);
-    const h = Math.max(1, clientHeight);
+    const rect = canvas.getBoundingClientRect();
+    const w = Math.max(1, rect.width);
+    const h = Math.max(1, rect.height);
     canvas.width = Math.floor(w * dpi);
     canvas.height = Math.floor(h * dpi);
     off.width = canvas.width;
@@ -44,10 +41,17 @@ export function initCanvas(canvas) {
     redrawAll();
   }
 
+  // 👇 Resize on startup and window resize
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ----------- API setters -----------
+  function setUser(you) { me = you; }
   function setTool(t) { tool = t; }
   function setColor(c) { color = c; }
   function setWidth(w) { width = w; }
 
+  // ----------- Operations -----------
   function loadOps(initialOps) {
     ops = [];
     index.clear();
@@ -93,14 +97,15 @@ export function initCanvas(canvas) {
       target.lineCap = 'round';
       target.lineJoin = 'round';
       target.lineWidth = op.width;
+
       const pts = op.points;
       if (pts.length < 2) return;
+
       target.beginPath();
       target.moveTo(pts[0].x, pts[0].y);
-      // Simple path smoothing: quadratic to midpoints
       for (let i = 1; i < pts.length - 1; i++) {
-        const midX = (pts[i].x + pts[i+1].x) / 2;
-        const midY = (pts[i].y + pts[i+1].y) / 2;
+        const midX = (pts[i].x + pts[i + 1].x) / 2;
+        const midY = (pts[i].y + pts[i + 1].y) / 2;
         target.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
       }
       target.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
@@ -110,34 +115,23 @@ export function initCanvas(canvas) {
   }
 
   function redrawAll() {
-    offCtx.save();
-    offCtx.setTransform(dpi, 0, 0, dpi, 0, 0);
-    offCtx.clearRect(0, 0, canvas.width, canvas.height);
+    offCtx.clearRect(0, 0, off.width, off.height);
     const alive = ops.filter(o => o.alive !== false).sort((a,b)=>a.order-b.order);
     alive.forEach(op => drawOp(offCtx, op));
-    offCtx.restore();
     blit();
   }
 
   function blit() {
-    ctx.save();
-    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(off, 0, 0);
-    ctx.restore();
   }
 
-  // Pointer handling
+  // ----------- Drawing logic -----------
   function canvasPos(e) {
     const r = canvas.getBoundingClientRect();
-    let x, y;
-    if (e.touches && e.touches[0]) {
-      x = e.touches[0].clientX - r.left;
-      y = e.touches[0].clientY - r.top;
-    } else {
-      x = e.clientX - r.left;
-      y = e.clientY - r.top;
-    }
-    return { x, y, t: performance.now() };
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - r.left, y: clientY - r.top, t: performance.now() };
   }
 
   function begin(e) {
@@ -153,20 +147,19 @@ export function initCanvas(canvas) {
     const p = canvasPos(e);
     if (drawing) {
       currentPoints.push(p);
-      // Local prediction: draw incrementally
+
       const tempOp = {
         id: '__local__',
         type: 'stroke',
         tool,
         color,
         width,
-        points: currentPoints.slice(-3), // draw only last segment
+        points: currentPoints.slice(-3),
         alive: true
       };
       drawOp(offCtx, tempOp);
       blit();
 
-      // batch send ~ every 40ms to reduce chatter
       const now = performance.now();
       if (now - lastSentAt > 40 && currentPoints.length > 3) {
         flushBatch(false);
@@ -193,18 +186,17 @@ export function initCanvas(canvas) {
       end: isEnd
     };
     lastSentAt = performance.now();
-    // Server will broadcast authoritative op; we also apply immediately for snappy UX.
     strokeBatchCb({ op: batch });
     currentPoints = [];
   }
 
-  // Remote cursors
+  // ----------- Remote cursors -----------
   function updateRemoteCursor(userId, x, y) {
     let el = cursorLayer.get(userId);
     if (!el) {
       el = document.getElementById('cursor-template').content.firstElementChild.cloneNode(true);
       el.id = `cursor-${userId}`;
-      el.querySelector('.label').textContent = userId.slice(0,4);
+      el.querySelector('.label').textContent = userId.slice(0, 4);
       document.body.appendChild(el);
       cursorLayer.set(userId, el);
     }
@@ -212,18 +204,18 @@ export function initCanvas(canvas) {
     el.style.top = `${y + canvas.getBoundingClientRect().top}px`;
   }
 
-  // Event listeners
+  // ----------- Event listeners -----------
   canvas.addEventListener('pointerdown', begin);
   canvas.addEventListener('pointermove', move);
   window.addEventListener('pointerup', end);
-  // touch
   canvas.addEventListener('touchstart', begin, { passive: false });
   canvas.addEventListener('touchmove', move, { passive: false });
   window.addEventListener('touchend', end);
 
+  // ----------- Return API -----------
   return {
     setUser, setTool, setColor, setWidth, resize, loadOps, applyOp, tombstone, restore,
-    onLocalStrokeBatch(cb){ strokeBatchCb = ({ op }) => cb({ roomId:'lobby', op }); },
+    onLocalStrokeBatch(cb){ strokeBatchCb = ({ op }) => cb({ roomId: 'lobby', op }); },
     onLocalCursor(cb){ cursorCb = cb; },
     updateRemoteCursor
   };

@@ -36,7 +36,10 @@
     </div>
   </template>
 
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-Cm7xqHn4F13h7g7k7AG9oEl3y7k7pXl7wK8QqT+9nqkT9k9j" crossorigin="anonymous"></script>
+  <!-- ✅ FIXED: Removed integrity/crossorigin so the script loads -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
+  <!-- ✅ Keep this type="module" -->
   <script type="module" src="./main.js"></script>
 </body>
 </html>

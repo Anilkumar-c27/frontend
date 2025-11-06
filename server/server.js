@@ -96,7 +96,7 @@ socket.on('disconnecting', () => {
 });
 });
 
-const PORT = process.env.PORT || 3001; // change to 3001
+const PORT = process.env.PORT || 3002;
 server.listen(PORT, () => {
 console.log(`✅ Server listening on http://localhost:${PORT}`);
 });

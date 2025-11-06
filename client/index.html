@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Collaborative Canvas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="stylesheet" href="./style.css"/>
+</head>
+<body>
+  <header>
+    <h1>Collaborative Canvas</h1>
+    <div class="toolbar">
+      <label>Tool:
+        <select id="tool">
+          <option value="brush">Brush</option>
+          <option value="eraser">Eraser</option>
+        </select>
+      </label>
+      <input type="color" id="color" value="#222222" />
+      <input type="range" id="width" min="1" max="32" value="4"/>
+      <button id="undo">Undo</button>
+      <button id="redo">Redo</button>
+      <span id="latency">-- ms</span>
+    </div>
+    <div id="users"></div>
+  </header>
+
+  <main>
+    <canvas id="canvas"></canvas>
+  </main>
+
+  <template id="cursor-template">
+    <div class="cursor">
+      <div class="dot"></div>
+      <span class="label"></span>
+    </div>
+  </template>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-Cm7xqHn4F13h7g7k7AG9oEl3y7k7pXl7wK8QqT+9nqkT9k9j" crossorigin="anonymous"></script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
